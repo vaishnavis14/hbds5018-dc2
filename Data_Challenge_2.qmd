@@ -1,0 +1,167 @@
+---
+title: "Data Challenge 2" 
+author: "Vaishnavi Sathiyamoorthy" 
+format: html 
+editor: visual 
+---
+
+# **Data Challenge #2: Mr. Trash Wheel**
+
+```{r}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+# load libraries
+library(tidyverse)
+library(readxl)
+library(janitor)
+library(here)
+library(stringr) 
+library(lubridate) 
+library(patchwork) 
+options(scipen = 999) # gets rid of scientific notation
+```
+
+## Problem 1
+
+```{r}
+# read in data
+trash_wheel_col_total <- read_excel(here("data/Trash-Wheel-Collection-Totals-8-6-19.xlsx"),
+                                    sheet = "Mr. Trash Wheel") # select sheet in the excel file
+trash_wheel_col_total <- clean_names(trash_wheel_col_total) 
+trash_wheel_col_total <- trash_wheel_col_total %>% 
+  filter(!is.na(dumpster)) # gets rid of NA values
+trash_wheel_col_total <- trash_wheel_col_total %>% 
+  mutate("wheel" = "Mr. Trash Wheel") # creates new column
+trash_wheel_col_total <- trash_wheel_col_total %>% 
+  select(-x15, -x16, -x17) # getting rid of extra columns
+```
+
+```{r}
+# read excel file
+prof_trash_wheel <- read_excel(here("data/Trash-Wheel-Collection-Totals-8-6-19.xlsx"), 
+                               sheet = "Professor Trash Wheel") # select sheet from excel file
+prof_trash_wheel <- clean_names(prof_trash_wheel) 
+prof_trash_wheel <- prof_trash_wheel %>% 
+  filter(!is.na(dumpster)) # get rid of rows with na values in dumpster column
+prof_trash_wheel <- prof_trash_wheel %>% 
+  mutate("wheel" = "Professor Trash Wheel") # create new column
+```
+
+```{r}
+# read excel file
+cap_trash_wheel <- read_excel(here("data/Trash-Wheel-Collection-Totals-8-6-19.xlsx"), 
+                              sheet = "Captain Trash Wheel") # select sheet from excel file
+cap_trash_wheel <- clean_names(cap_trash_wheel) 
+cap_trash_wheel <- prof_trash_wheel %>% 
+  filter(!is.na(dumpster)) # get rid of NA values
+cap_trash_wheel <- cap_trash_wheel %>% 
+  mutate("wheel" = "Captain Trash Wheel") # create new columns
+```
+
+```{r}
+# combines rows from all 3 datasets
+all_trash_wheels <- bind_rows(trash_wheel_col_total, 
+                              prof_trash_wheel, 
+                              cap_trash_wheel) 
+all_trash_wheels <- all_trash_wheels %>% 
+  pivot_longer(cols = 7:13, names_to = "trash_type", values_to = "number") # makes dataset longer
+colnames(all_trash_wheels) <- str_to_title(colnames(all_trash_wheels)) # capitalizes column names
+```
+
+```{r}
+all_trash_wheels_totals_June_2018 <- all_trash_wheels %>% 
+  filter(Month == "June" & Year == 2018) %>% # gets rows with June 2018
+  group_by(Wheel, Trash_type) %>% # groups by wheel and trash type
+  summarise("Total_Trash_Collected" = sum(Number)) # adds the trash for each type
+```
+
+```{r}
+all_trash_wheels %>% 
+  group_by(Wheel, Trash_type) %>% 
+  mutate(Trash_type = str_replace(Trash_type, "_", " "), # replaces _ with space
+         Trash_type = str_to_title(Trash_type)) %>% # capitalizes
+  summarise("Total_Trash_Collected" = sum(Number)) %>% 
+  ggplot(aes(x = Total_Trash_Collected, 
+             y = Wheel, 
+             fill = Trash_type)) + 
+  geom_col() + facet_wrap(~ Trash_type,
+                          ncol = 4) + # creates separate graphs for each wheel
+  labs(title = "Total Trash Collected for Each Trash Type by Trash Wheel", 
+       x = "Total Trash Collected", 
+       y = "Trash Type") + 
+  theme(axis.text.x = element_text(angle = 90, # turns labels sideways
+                                   vjust = 0.5, # centers labels
+                                   hjust=1), 
+        legend.position = "none") # removes legend
+```
+
+## Problem 2
+
+```{r}
+ snp <- read_csv(here("data/snp.csv")) 
+ snp$date <- mdy(snp$date) # changes to date format
+ for (i in 1:nrow(snp)){ 
+   if (year(snp$date[i]) >= 2050) { # 1950 - 1968 are incorrectly dated
+     snp$date[i] <- snp$date[i] %m+% years(-100) # subtracts 100 years
+     } 
+   } 
+snp <- snp %>% 
+  mutate("year" = year(date), # creates year column
+        "month" = month(date)) %>% # creates month column
+  rename("Date" = "date") # capitalizes date
+```
+
+```{r}
+unemployment <- read_csv(here("data/unemployment.csv")) # read csv file
+unemployment<- unemployment %>% 
+  pivot_longer(cols = Jan:Dec, 
+               names_to = "Month", 
+               values_to = "Unemployment") # makes data frame longer
+unemployment <- unemployment %>% 
+  mutate(Day = 1, # makes all the days 1
+         Date = mdy(paste(Month, Day, Year, sep = " "))) %>% # creates date
+  select(-Day) # removes day column
+```
+
+```{r}
+combined <- snp %>% 
+  group_by(year, month) %>%  # groups by year and month
+  summarise(SNP_Average = mean(close)) %>%  # average closing for each month of each year
+  mutate(Day = 1, 
+         Date = mdy(paste(month, Day, year))) %>%  # creates date
+  select(-Day) %>%  # removes day column
+  inner_join(unemployment)  # joins with unemployment by Date
+
+ggplot(combined, aes(x = Date)) + 
+  geom_line(aes(y = SNP_Average, color = "S&P Average")) +  # line plot for SNP Average
+  geom_line(aes(y = Unemployment * 100, color = "Unemployment")) +  # line plot for Unemployment
+  scale_y_continuous(name = "S&P Closing Price ($)", 
+                     sec.axis = sec_axis(~. / 100, name = "Unemployment (%)")) +  # secondary axis
+  labs(title = "Unemployment and S&P Closing Price Over Time", 
+       x = "Time") + 
+  theme_minimal() +
+  scale_color_manual(values = c("Unemployment" = "blue", "S&P Average" = "red")) +  # colors
+  theme(legend.title = element_blank())  # remove legend title
+```
+
+## Problem 3
+
+```{r}
+snp_average <- snp %>% 
+  group_by(year, month) %>% # group by month  and year
+  summarise("SNP_Average" = mean(close)) %>% # average closing per month in each year
+  mutate(Day = 1, # creates new column day
+         Date = mdy(paste(month, Day, year))) %>% # creates date
+  select(-Day) # removes day column
+
+inner_join(snp_average, unemployment) %>% # joins 2 datasets
+  filter(year(Date) >= 2000) %>% # filters to years greater than 2000
+  ggplot(aes(SNP_Average, Unemployment, color = Year)) + 
+  geom_point() + # creates scatterplot
+  labs(title = "SNP Average and Unemployment by Year", 
+       x = "SNP Average") + 
+  theme_minimal() # gets rid of background
+```
+
+## Problem 4
+
+Unemployment has been relatively cyclical. Every five years or so, unemployment rises and falls. Until the year 2000, the S&P average was rising steadily. However, after the year 2000, unemployment and S&P average for each month have been opposites. As unemployment rises, S&P average falls. However, overall the S&P average has increased from 1958 to 2015. Pre-2008, the unemployment rate decreased and the S&P average increases. After the market crashed in 2008, unemployment rose and the S&P average fell. Eventually unemployment started falling and the S&P average increased.
